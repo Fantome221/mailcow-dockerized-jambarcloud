@@ -1,0 +1,90 @@
+name: Security Scan (secrets — commits propres uniquement)
+
+# Ce depot est un FORK de mailcow/mailcow-dockerized, HORS PERIMETRE du
+# chantier CI/CD (code et workflows upstream conserves tels quels) — seul ce
+# scan de secrets a ete ajoute, demande explicitement.
+#
+# Perimetre volontairement restreint aux commits PROPRES a ce fork : on
+# compare avec le remote upstream et on ne scanne que ce qui vient apres le
+# point de divergence (merge-base). Scanner tout l'historique inclurait des
+# annees de commits de la communaute mailcow, hors de notre controle et sur
+# lesquels aucune correction n'est possible.
+#
+# JAMAIS sur push/pull_request (l'historique upstream grossit a chaque sync,
+# le job deviendrait de plus en plus lent) : seulement en schedule et a la
+# demande. Detection seule, aucun service SaaS/cloud.
+on:
+  schedule:
+    - cron: "0 4 * * 1" # chaque lundi 04:00 UTC
+  workflow_dispatch: {}
+
+concurrency:
+  group: security-scan-mailcow
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: Gitleaks (commits propres au fork)
+    runs-on: self-hosted
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Récupérer le code source (historique complet)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Installer Gitleaks (v8.30.1, vérifié par checksum)
+        run: |
+          set -euo pipefail
+          VERSION="8.30.1"
+          ARCH="$(uname -m)"
+          case "$ARCH" in
+            x86_64)  GL_ARCH="x64" ;;
+            aarch64) GL_ARCH="arm64" ;;
+            *) echo "::error::Architecture non supportée pour gitleaks : $ARCH" >&2; exit 1 ;;
+          esac
+          case "$GL_ARCH" in
+            x64)   SHA256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb" ;;
+            arm64) SHA256="e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080" ;;
+          esac
+          ASSET="gitleaks_${VERSION}_linux_${GL_ARCH}.tar.gz"
+          URL="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/${ASSET}"
+          TMP="$(mktemp -d)"
+          curl -fsSL -o "${TMP}/${ASSET}" "$URL"
+          echo "${SHA256}  ${TMP}/${ASSET}" | sha256sum -c -
+          tar -xzf "${TMP}/${ASSET}" -C "${TMP}" gitleaks
+          install -m 0755 "${TMP}/gitleaks" /usr/local/bin/gitleaks
+          rm -rf "${TMP}"
+          gitleaks version
+
+      - name: Trouver le point de divergence avec l'upstream
+        id: base
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/mailcow/mailcow-dockerized.git
+          git fetch --quiet upstream master
+          BASE="$(git merge-base HEAD upstream/master)"
+          echo "Point de divergence : $BASE"
+          echo "base_sha=$BASE" >> "$GITHUB_OUTPUT"
+
+      # --log-opts limite gitleaks aux commits APRES le point de divergence :
+      # seuls les commits propres a ce fork sont scannes, jamais l'historique
+      # communautaire upstream.
+      - name: Scanner les commits propres au fork
+        continue-on-error: true
+        run: |
+          gitleaks git --config .gitleaks.toml \
+            --log-opts="${{ steps.base.outputs.base_sha }}..HEAD" \
+            --report-format sarif --report-path gitleaks-report.sarif \
+            --exit-code 1 .
+
+      - name: Publier le rapport en artefact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.sarif
+          retention-days: 30
+          if-no-files-found: ignore
