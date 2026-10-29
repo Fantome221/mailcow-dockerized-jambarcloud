@@ -1,0 +1,24 @@
+# Configuration Gitleaks pour mailcow-dockerized-jambarcloud (fork upstream).
+# Etend la configuration par defaut de Gitleaks (regles standard conservees).
+#
+# Ce depot est HORS PERIMETRE du chantier CI/CD (code upstream, workflows
+# upstream conserves tels quels) — seul ce scan de secrets a ete ajoute, et
+# il ne regarde QUE les commits propres a ce fork (voir security-scan.yml :
+# comparaison avec mailcow/mailcow-dockerized, jamais tout l'historique
+# communautaire, hors de notre controle).
+title = "gitleaks config — mailcow-dockerized-jambarcloud (fork, commits propres uniquement)"
+
+[extend]
+useDefault = true
+
+[allowlist]
+  description = "Exceptions documentees — revue requise a la date d'expiration indiquee"
+  regexes = []
+
+  paths = [
+    # Certificats/cles d'exemple fournis par l'upstream Mailcow lui-meme
+    # (auto-signes, de demonstration) — non modifies par ce fork, verifies
+    # lors de l'audit initial (auteurs andryyy / Michael Kuron / Dmitriy
+    # Alekseev, aucun commit de ce compte sur ces fichiers).
+    '''^data/assets/ssl-example/.*''',
+  ]
