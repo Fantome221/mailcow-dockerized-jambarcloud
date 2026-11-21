@@ -7,7 +7,8 @@ on:
   workflow_dispatch: # Allow to run workflow manually
 
 permissions:
-  contents: read # to fetch code (actions/checkout)
+  contents: write # to push the update branch
+  pull-requests: write # to open the update PR
   
   
 jobs:
@@ -24,13 +25,13 @@ jobs:
     - name: Create Pull Request
       uses: peter-evans/create-pull-request@v8
       with:
-        token: ${{ secrets.mailcow_action_Update_postscreen_access_cidr_pat }}
+        token: ${{ secrets.GITHUB_TOKEN }}
         commit-message: update postscreen_access.cidr
-        committer: milkmaker <milkmaker@mailcow.de>
-        author: milkmaker <milkmaker@mailcow.de>
+        committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+        author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
         signoff: false
         branch: update/postscreen_access.cidr
-        base: staging
+        base: master
         delete-branch: true
         add-paths: |
           data/conf/postfix/postscreen_access.cidr
