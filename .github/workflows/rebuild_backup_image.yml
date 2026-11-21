@@ -29,6 +29,10 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/backup" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
@@ -36,4 +40,4 @@ jobs:
           platforms: linux/amd64,linux/arm64
           file: data/Dockerfiles/backup/Dockerfile
           push: true
-          tags: ghcr.io/mailcow/backup:latest
+          tags: ${{ steps.image.outputs.name }}:latest
